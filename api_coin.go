@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,11 +11,18 @@ import (
 )
 
 func GetTrackedCoins(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
 	username := r.Header.Get("username")
 	var userID int
 	err := db.QueryRow("SELECT id FROM users WHERE username = ?", username).Scan(&userID)
-	if err != nil {
-		http.Error(w, "User not found", http.StatusInternalServerError)
+	if err == sql.ErrNoRows {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "User not found"})
+		return
+	} else if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Internal server error"})
 		return
 	}
 
@@ -25,7 +33,7 @@ func GetTrackedCoins(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var coins []Coin
+	var coinResp CoinResp
 	for rows.Next() {
 		var coin Coin
 		err := rows.Scan(&coin.ID, &coin.Name)
@@ -34,20 +42,27 @@ func GetTrackedCoins(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		coin.Price, _ = GetCoinPrice(coin.Name)
-		coins = append(coins, coin)
+		coinResp.Data = append(coinResp.Data, coin)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(coins)
+	json.NewEncoder(w).Encode(coinResp)
 }
 
 func AddCoin(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
 	username := r.Header.Get("username")
 	var userID int
 	err := db.QueryRow("SELECT id FROM users WHERE username = ?", username).Scan(&userID)
-	if err != nil {
-		http.Error(w, "User not found", http.StatusInternalServerError)
+	if err == sql.ErrNoRows {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "User not found"})
+		return
+	} else if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Internal server error"})
 		return
 	}
 
@@ -69,22 +84,33 @@ func AddCoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Add coin success"})
 }
 
 func RemoveCoin(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
 	username := r.Header.Get("username")
 	var userID int
 	err := db.QueryRow("SELECT id FROM users WHERE username = ?", username).Scan(&userID)
-	if err != nil {
-		http.Error(w, "User not found", http.StatusInternalServerError)
+	if err == sql.ErrNoRows {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "User not found"})
+		return
+	} else if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Internal server error"})
 		return
 	}
 
 	vars := mux.Vars(r)
-	coinID, _ := strconv.Atoi(vars["id"])
+	coinID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Path variable id can't be found"})
+		return
+	}
 
 	_, err = db.Exec("DELETE FROM coins WHERE id = ? AND user_id = ?", coinID, userID)
 	if err != nil {
@@ -92,7 +118,6 @@ func RemoveCoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Delete coin success"})
 }
