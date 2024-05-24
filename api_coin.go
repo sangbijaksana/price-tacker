@@ -72,7 +72,21 @@ func AddCoin(w http.ResponseWriter, r *http.Request) {
 	// Verify coin existence in CoinCap API
 	_, err = GetCoinPrice(coinReq.NameID)
 	if err != nil {
-		http.Error(w, "Coin not found in CoinCap API", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Coin not found in CoinCap API"})
+		return
+	}
+
+	var existingCoin Coin
+	err = db.QueryRow("SELECT id FROM coins WHERE user_id = ? AND name_id = ?", userID, coinReq.NameID).
+		Scan(&existingCoin.ID)
+	if err == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Coin already added"})
+		return
+	} else if err != sql.ErrNoRows {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Could not check coin"})
 		return
 	}
 
@@ -109,6 +123,19 @@ func RemoveCoin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Path variable id can't be found"})
+		return
+	}
+
+	var existingCoin Coin
+	err = db.QueryRow("SELECT id FROM coins WHERE user_id = ? AND id = ?", userID, coinID).
+		Scan(&existingCoin.ID)
+	if err == sql.ErrNoRows {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Matching coin ID doesn't exist"})
+		return
+	} else if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Coin already added"})
 		return
 	}
 
